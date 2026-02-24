@@ -19,7 +19,7 @@ engli-bot-2 아키텍처를 기반으로, 사용자(또는 봇 자신)가 스킬
 ## 설치
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/mini-bot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/JUCHEOLJIN/minibot/main/install.sh | bash
 ```
 
 설치 스크립트가 자동으로 처리합니다:
@@ -31,13 +31,13 @@ curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/mini-bot/main/install
 ### 제거
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/mini-bot/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/JUCHEOLJIN/minibot/main/uninstall.sh | bash
 ```
 
 ### 수동 설치 (개발용)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mini-bot.git
+git clone https://github.com/JUCHEOLJIN/minibot.git
 cd mini-bot
 npm install
 cp .env.example .env   # 토큰 입력

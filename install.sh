@@ -19,7 +19,7 @@ ENV_FILE="$BOT_DIR/.env"
 LOG_FILE="$MINI_BOT_HOME/mini-bot.log"
 
 # GitHub 레포 주소 (배포 시 수정)
-REPO_URL="https://github.com/YOUR_USERNAME/mini-bot.git"
+REPO_URL="https://github.com/JUCHEOLJIN/minibot.git"
 
 # ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 print_banner() {
