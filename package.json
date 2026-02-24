@@ -1,0 +1,29 @@
+{
+  "name": "mini-bot",
+  "version": "1.0.0",
+  "description": "Minimal extensible Slack bot powered by Claude. No built-in skills — grow it yourself.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts"
+  },
+  "keywords": ["slack", "ai", "bot", "claude", "extensible"],
+  "license": "MIT",
+  "dependencies": {
+    "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.9.0",
+    "dotenv": "^17.2.3",
+    "gray-matter": "^4.0.3",
+    "node-cron": "^3.0.3",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
