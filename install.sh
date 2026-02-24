@@ -92,7 +92,7 @@ ask_yn() {
   fi
 }
 
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 
 # ─── 시작 ────────────────────────────────────────────────────────────────────
 print_banner
@@ -239,8 +239,35 @@ EOF
   ok ".env 생성 완료"
 fi
 
-# ─── Step 5: 자동 시작 설정 (선택) ──────────────────────────────────────
-step 5 "자동 시작 설정 (선택)"
+# ─── Step 5: CLI 설치 ────────────────────────────────────────────────────
+step 5 "mini-bot 명령어 설치"
+
+CLI_SCRIPT="$BOT_DIR/bin/mini-bot"
+chmod +x "$CLI_SCRIPT"
+
+# 설치 위치 결정: /usr/local/bin 우선, 안 되면 ~/.local/bin
+if [ -w "/usr/local/bin" ]; then
+  CLI_TARGET="/usr/local/bin/mini-bot"
+  ln -sf "$CLI_SCRIPT" "$CLI_TARGET"
+  ok "mini-bot 명령어 설치됨: $CLI_TARGET"
+else
+  CLI_DIR="$HOME/.local/bin"
+  mkdir -p "$CLI_DIR"
+  ln -sf "$CLI_SCRIPT" "$CLI_DIR/mini-bot"
+  ok "mini-bot 명령어 설치됨: $CLI_DIR/mini-bot"
+
+  # PATH에 없으면 안내
+  if ! echo "$PATH" | grep -q "$CLI_DIR"; then
+    warn "PATH에 $CLI_DIR 를 추가하세요:"
+    echo ""
+    echo '    echo '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.zshrc'
+    echo "    source ~/.zshrc"
+    echo ""
+  fi
+fi
+
+# ─── Step 6: 자동 시작 설정 (선택) ──────────────────────────────────────
+step 6 "자동 시작 설정 (선택)"
 
 OS_TYPE="$(uname -s)"
 
@@ -301,7 +328,7 @@ EOF
     ok "launchd 등록 완료 → 재부팅 시 자동 시작"
     ok "로그: $LOG_FILE"
   else
-    warn "자동 시작 건너뜀 — 수동 실행: cd $BOT_DIR && npm start"
+    warn "자동 시작 건너뜀 — 수동 실행: mini-bot start"
   fi
 
 elif [ "$OS_TYPE" = "Linux" ]; then
@@ -319,8 +346,8 @@ elif [ "$OS_TYPE" = "Linux" ]; then
   fi
 fi
 
-# ─── Step 6: 완료 ─────────────────────────────────────────────────────────
-step 6 "완료"
+# ─── Step 7: 완료 ─────────────────────────────────────────────────────────
+step 7 "완료"
 
 echo ""
 echo -e "${BOLD}${GREEN}  ✓ mini-bot 설치 완료!${NC}"
@@ -330,18 +357,18 @@ echo -e "  ${DIM}봇${NC}    $BOT_DIR"
 echo -e "  ${DIM}스킬${NC}  $SKILLS_DIR"
 echo -e "  ${DIM}설정${NC}  $ENV_FILE"
 echo ""
-echo -e "  ${BOLD}실행 방법${NC}"
-echo -e "  ${CYAN}cd $BOT_DIR && npm start${NC}"
+echo -e "  ${BOLD}명령어${NC}"
+echo -e "  ${CYAN}mini-bot start${NC}      포그라운드 실행"
+echo -e "  ${CYAN}mini-bot start -d${NC}   백그라운드 실행"
+echo -e "  ${CYAN}mini-bot stop${NC}       중지"
+echo -e "  ${CYAN}mini-bot restart${NC}    재시작"
+echo -e "  ${CYAN}mini-bot status${NC}     상태 확인"
+echo -e "  ${CYAN}mini-bot logs${NC}       실시간 로그"
+echo -e "  ${CYAN}mini-bot update${NC}     최신 버전으로 업데이트"
 echo ""
-echo -e "  ${BOLD}스킬 추가${NC}"
-echo -e "  Slack에서 봇에게 말하세요:"
+echo -e "  ${BOLD}스킬 추가 (Slack에서)${NC}"
 echo -e "  ${DIM}→ \"날씨 알림 스킬 만들어줘\"${NC}"
 echo -e "  ${DIM}→ \"스킬 새로고침\"${NC}"
-echo ""
-echo -e "  ${BOLD}유용한 명령어${NC}"
-echo -e "  ${DIM}스킬 목록       — Slack에서 입력${NC}"
-echo -e "  ${DIM}스킬 새로고침   — 스킬 추가 후 재스캔${NC}"
-echo -e "  ${DIM}초기화          — 대화 기록 초기화${NC}"
 echo ""
 echo -e "  ${DIM}문서: $BOT_DIR/README.md${NC}"
 echo ""
