@@ -85,7 +85,7 @@ export class SlackMessageHandler {
     }
 
     // ── Claude에게 위임 ─────────────────────────────────────────
-    await this.handleWithClaude(channel, message);
+    await this.handleWithClaude(channel, message, thread_ts);
   }
 
   // ── 명령어 핸들러 ────────────────────────────────────────────
@@ -154,18 +154,18 @@ export class SlackMessageHandler {
     }
   }
 
-  private async handleWithClaude(channel: string, message: string): Promise<void> {
+  private async handleWithClaude(channel: string, message: string, threadTs?: string): Promise<void> {
     const workingDir = this.getWorkingDir(channel);
     const session = new ClaudeSession(channel, undefined, workingDir);
 
-    const processingMsg = await this.post(channel, `🤔 처리 중...\n\n> ${message}`);
+    const processingMsg = await this.post(channel, `🤔 처리 중...\n\n> ${message}`, threadTs);
     const msgTs = processingMsg?.ts;
 
     try {
       const { result } = await session.sendMessage(message);
 
       if (result.length > 3000) {
-        await this.update(channel, msgTs, `✅ 완료 (파일로 전송)\n\n> ${message}`);
+        await this.update(channel, msgTs, `✅ 완료 (파일로 전송)\n\n> ${message}`, threadTs);
         await this.deps.slackApp.client.files.uploadV2({
           channels: channel,
           content: result,
@@ -173,11 +173,11 @@ export class SlackMessageHandler {
           title: "Claude Response",
         });
       } else {
-        await this.update(channel, msgTs, result);
+        await this.update(channel, msgTs, result, threadTs);
       }
     } catch (error: any) {
       console.error("Claude 실행 오류:", error);
-      await this.update(channel, msgTs, `❌ 오류: ${error.message}`);
+      await this.update(channel, msgTs, `❌ 오류: ${error.message}`, threadTs);
     }
   }
 
@@ -188,23 +188,27 @@ export class SlackMessageHandler {
     return this.workingDirs.get(channel) ?? this.deps.defaultWorkingDir;
   }
 
-  private async post(channel: string, text: string): Promise<any> {
+  private async post(channel: string, text: string, threadTs?: string): Promise<any> {
     try {
-      return await this.deps.slackApp.client.chat.postMessage({ channel, text });
+      return await this.deps.slackApp.client.chat.postMessage({
+        channel,
+        text,
+        ...(threadTs && { thread_ts: threadTs }),
+      });
     } catch (error) {
       console.error("메시지 전송 실패:", error);
     }
   }
 
-  private async update(channel: string, ts: string | undefined, text: string): Promise<void> {
+  private async update(channel: string, ts: string | undefined, text: string, threadTs?: string): Promise<void> {
     if (!ts) {
-      await this.post(channel, text);
+      await this.post(channel, text, threadTs);
       return;
     }
     try {
       await this.deps.slackApp.client.chat.update({ channel, ts, text });
     } catch {
-      await this.post(channel, text);
+      await this.post(channel, text, threadTs);
     }
   }
 }
