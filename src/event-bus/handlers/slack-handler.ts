@@ -167,6 +167,30 @@ export class SlackMessageHandler {
     }
   }
 
+  private async fetchThreadContext(channel: string, threadTs: string): Promise<string | null> {
+    try {
+      const res = await this.deps.slackApp.client.conversations.replies({
+        channel,
+        ts: threadTs,
+        limit: 100,
+      });
+
+      const messages = res.messages || [];
+      if (messages.length <= 1) return null;
+
+      return messages
+        .map((msg) => {
+          const time = new Date(parseFloat(msg.ts!) * 1000).toLocaleString("ko-KR");
+          const user = msg.user ? `<@${msg.user}>` : (msg.username || "bot");
+          return `[${time}] ${user}: ${msg.text}`;
+        })
+        .join("\n");
+    } catch (err) {
+      console.error("스레드 컨텍스트 조회 실패:", err);
+      return null;
+    }
+  }
+
   private async handleWithClaude(channel: string, message: string, threadTs?: string): Promise<void> {
     const workingDir = this.getWorkingDir(channel);
     const session = new ClaudeSession(channel, undefined, workingDir);
@@ -175,7 +199,16 @@ export class SlackMessageHandler {
     const msgTs = processingMsg?.ts;
 
     try {
-      const { result } = await session.sendMessage(message);
+      let fullMessage = message;
+
+      if (threadTs) {
+        const threadContext = await this.fetchThreadContext(channel, threadTs);
+        if (threadContext) {
+          fullMessage = `[스레드 내용]\n${threadContext}\n\n[사용자 요청]\n${message}`;
+        }
+      }
+
+      const { result } = await session.sendMessage(fullMessage);
 
       if (result.length > 3000) {
         await this.update(channel, msgTs, `✅ 완료 (파일로 전송)\n\n> ${message}`, threadTs);
