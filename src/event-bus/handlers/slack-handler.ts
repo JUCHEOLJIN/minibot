@@ -181,7 +181,7 @@ export class SlackMessageHandler {
       return messages
         .map((msg) => {
           const time = new Date(parseFloat(msg.ts!) * 1000).toLocaleString("ko-KR");
-          const user = msg.user ? `<@${msg.user}>` : (msg.username || "bot");
+          const user = msg.user ? `<@${msg.user}>` : ((msg as any).username || "bot");
           return `[${time}] ${user}: ${msg.text}`;
         })
         .join("\n");
