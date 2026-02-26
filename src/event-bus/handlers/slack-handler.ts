@@ -84,6 +84,19 @@ export class SlackMessageHandler {
       return;
     }
 
+    // ── 스레드 요약 → JIRA description append ─────────────────
+    const jiraRecordTriggers = ["요약하고 JIRA 카드에 기록해줘", "jira에 기록해줘", "jira 카드에 추가", "JIRA에 정리해줘", "jira description에 추가"];
+    const jiraUrlMatch = message.match(/https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i);
+    if (thread_ts && jiraUrlMatch && jiraRecordTriggers.some((t) => message.toLowerCase().includes(t.toLowerCase()))) {
+      const jiraKey = jiraUrlMatch[1].toUpperCase();
+      await this.deps.skillScheduler.runSkill(
+        "slack-to-jira",
+        [channel, thread_ts, jiraKey, userId],
+        { timeout: 120000 }
+      );
+      return;
+    }
+
     // ── Claude에게 위임 ─────────────────────────────────────────
     await this.handleWithClaude(channel, message, thread_ts);
   }
