@@ -14,6 +14,8 @@ export interface SlackMessageEvent extends BaseEvent {
     userId: string;
     message: string;
     isDirectMessage: boolean;
+    ts: string;
+    thread_ts?: string;
   };
 }
 

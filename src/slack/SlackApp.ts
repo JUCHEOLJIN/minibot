@@ -40,7 +40,14 @@ export class SlackApp {
       const message = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
       if (!message) return;
 
-      await this.emit(event.channel, event.user, message, false);
+      await this.emit(
+        event.channel,
+        event.user,
+        message,
+        false,
+        event.ts,
+        (event as any).thread_ts
+      );
     });
 
     // DM 핸들러
@@ -60,14 +67,16 @@ export class SlackApp {
     channel: string,
     userId: string,
     message: string,
-    isDirectMessage: boolean
+    isDirectMessage: boolean,
+    ts: string = "",
+    threadTs?: string
   ): Promise<void> {
     const slackEvent: SlackMessageEvent = {
       type: "slack_message",
       source: "slack",
       timestamp: new Date(),
       id: uuidv4(),
-      data: { channel, userId, message, isDirectMessage },
+      data: { channel, userId, message, isDirectMessage, ts, thread_ts: threadTs },
     };
 
     await this.eventBus.emit(slackEvent);

@@ -86,4 +86,13 @@ export class SkillScheduler {
   getScheduledNames(): string[] {
     return Array.from(this.scheduledTasks.keys());
   }
+
+  async runSkill(skillName: string, args: string[], options: { timeout?: number } = {}): Promise<void> {
+    const skill = this.skillLoader.getSkill(skillName);
+    if (!skill) {
+      console.error(`스킬 없음: ${skillName}`);
+      return;
+    }
+    await this.skillExecutor.execute(skill, args, { timeout: options.timeout });
+  }
 }

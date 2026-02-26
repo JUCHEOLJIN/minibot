@@ -33,7 +33,7 @@ export class SlackMessageHandler {
     if (event.type !== "slack_message") return;
 
     const slackEvent = event as SlackMessageEvent;
-    const { channel, message } = slackEvent.data;
+    const { channel, message, userId, thread_ts } = slackEvent.data;
 
     console.log(`💬 메시지: "${message}" (채널: ${channel})`);
 
@@ -70,6 +70,17 @@ export class SlackMessageHandler {
 
     if (dirMatch) {
       await this.handleChangeDir(channel, dirMatch[1].trim());
+      return;
+    }
+
+    // ── 스레드 요약 직접 실행 ──────────────────────────────────
+    const summarizeTriggers = ["요약하고 노션에 기록해줘", "슬랙 요약", "스레드 요약", "노션에 정리해줘", "노션에 저장해줘"];
+    if (thread_ts && summarizeTriggers.some((t) => message.includes(t))) {
+      await this.deps.skillScheduler.runSkill(
+        "slack-summarize",
+        [channel, thread_ts, userId],
+        { timeout: 120000 }
+      );
       return;
     }
 
