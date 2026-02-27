@@ -33,16 +33,25 @@ export class SlackMessageHandler {
     if (event.type !== "slack_message") return;
 
     const slackEvent = event as SlackMessageEvent;
-    const { channel, message, userId, thread_ts } = slackEvent.data;
+    const { channel, message, userId, thread_ts, isOwner } = slackEvent.data;
 
     console.log(`💬 메시지: "${message}" (채널: ${channel})`);
+
+    // ── 비오너: 허용된 스킬만 실행 ──────────────────────────────
+    if (!isOwner) {
+      await this.handleRestricted(channel, message, userId, thread_ts);
+      return;
+    }
 
     // ── 내장 명령어 ────────────────────────────────────────────
 
     if (message === "초기화" || message === "리셋") {
       clearConversation(channel);
       this.workingDirs.delete(channel); // 작업 디렉토리도 초기화
-      await this.post(channel, "🔄 대화 기록과 작업 디렉토리를 초기화했습니다.");
+      await this.post(
+        channel,
+        "🔄 대화 기록과 작업 디렉토리를 초기화했습니다.",
+      );
       return;
     }
 
@@ -65,8 +74,7 @@ export class SlackMessageHandler {
 
     // "작업 디렉토리 <path>" 또는 "cd <path>"
     const dirMatch =
-      message.match(/^작업 디렉토리\s+(.+)$/) ||
-      message.match(/^cd\s+(.+)$/);
+      message.match(/^작업 디렉토리\s+(.+)$/) || message.match(/^cd\s+(.+)$/);
 
     if (dirMatch) {
       await this.handleChangeDir(channel, dirMatch[1].trim());
@@ -74,25 +82,45 @@ export class SlackMessageHandler {
     }
 
     // ── 스레드 요약 직접 실행 ──────────────────────────────────
-    const summarizeTriggers = ["요약하고 노션에 기록해줘", "슬랙 요약", "스레드 요약", "노션에 정리해줘", "노션에 저장해줘"];
+    const summarizeTriggers = [
+      "요약하고 노션에 기록해줘",
+      "슬랙 요약",
+      "스레드 요약",
+      "노션에 정리해줘",
+      "노션에 저장해줘",
+    ];
     if (thread_ts && summarizeTriggers.some((t) => message.includes(t))) {
       await this.deps.skillScheduler.runSkill(
         "slack-summarize",
         [channel, thread_ts, userId],
-        { timeout: 120000 }
+        { timeout: 120000 },
       );
       return;
     }
 
     // ── 스레드 요약 → JIRA description append ─────────────────
-    const jiraRecordTriggers = ["요약하고 JIRA 카드에 기록해줘", "jira에 기록해줘", "jira 카드에 추가", "JIRA에 정리해줘", "jira description에 추가"];
-    const jiraUrlMatch = message.match(/https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i);
-    if (thread_ts && jiraUrlMatch && jiraRecordTriggers.some((t) => message.toLowerCase().includes(t.toLowerCase()))) {
+    const jiraRecordTriggers = [
+      "요약하고 JIRA 카드에 기록해줘",
+      "jira에 기록해줘",
+      "jira 카드에 추가",
+      "JIRA에 정리해줘",
+      "jira description에 추가",
+    ];
+    const jiraUrlMatch = message.match(
+      /https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i,
+    );
+    if (
+      thread_ts &&
+      jiraUrlMatch &&
+      jiraRecordTriggers.some((t) =>
+        message.toLowerCase().includes(t.toLowerCase()),
+      )
+    ) {
       const jiraKey = jiraUrlMatch[1].toUpperCase();
       await this.deps.skillScheduler.runSkill(
         "slack-to-jira",
         [channel, thread_ts, jiraKey, userId],
-        { timeout: 120000 }
+        { timeout: 120000 },
       );
       return;
     }
@@ -101,9 +129,91 @@ export class SlackMessageHandler {
     await this.handleWithClaude(channel, message, thread_ts);
   }
 
+  // ── 비오너 restricted 핸들러 ─────────────────────────────────
+
+  private async handleRestricted(
+    channel: string,
+    message: string,
+    userId: string,
+    thread_ts?: string,
+  ): Promise<void> {
+    const summarizeTriggers = [
+      "요약하고 노션에 기록해줘",
+      "슬랙 요약",
+      "스레드 요약",
+      "노션에 정리해줘",
+      "노션에 저장해줘",
+    ];
+    const jiraRecordTriggers = [
+      "요약하고 jira 카드에 기록해줘",
+      "jira에 기록해줘",
+      "jira 카드에 추가",
+      "jira에 정리해줘",
+      "jira description에 추가",
+      "지라 카드에 추가",
+      "지라에 정리해줘",
+      "지라에 저장해줘",
+    ];
+    const jiraUrlMatch = message.match(
+      /https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i,
+    );
+
+    // 1. 스레드 요약 → Notion
+    if (thread_ts && summarizeTriggers.some((t) => message.includes(t))) {
+      await this.deps.skillScheduler.runSkill(
+        "slack-summarize",
+        [channel, thread_ts, userId],
+        { timeout: 120000 },
+      );
+      return;
+    }
+
+    // 2. 스레드 요약 → Jira
+    if (
+      thread_ts &&
+      jiraUrlMatch &&
+      jiraRecordTriggers.some((t) =>
+        message.toLowerCase().includes(t.toLowerCase()),
+      )
+    ) {
+      const jiraKey = jiraUrlMatch[1].toUpperCase();
+      await this.deps.skillScheduler.runSkill(
+        "slack-to-jira",
+        [channel, thread_ts, jiraKey, userId],
+        { timeout: 120000 },
+      );
+      return;
+    }
+
+    // 3. thread_ts 없이 요약 트리거만 보낸 경우 안내
+    if (
+      !thread_ts &&
+      (summarizeTriggers.some((t) => message.includes(t)) ||
+        jiraRecordTriggers.some((t) =>
+          message.toLowerCase().includes(t.toLowerCase()),
+        ))
+    ) {
+      await this.post(
+        channel,
+        `<@${userId}> 스레드 안에서 멘션해주세요. 요약할 스레드가 필요합니다.`,
+      );
+      return;
+    }
+
+    // 4. 허용되지 않은 요청 거절
+    await this.post(
+      channel,
+      `<@${userId}> 저는 이 채널에서 다음 기능만 지원합니다:\n• *스레드 요약 후 노션 저장* — 스레드에서 \`스레드 요약\` 멘션\n• *스레드 요약 후 Jira 기록* — 스레드에서 \`jira에 기록해줘 <Jira URL>\` 멘션`,
+      thread_ts,
+    );
+  }
+
   // ── 명령어 핸들러 ────────────────────────────────────────────
 
-  private async handleChangeDir(channel: string, inputPath: string): Promise<void> {
+  private async handleChangeDir(
+    channel: string,
+    inputPath: string,
+  ): Promise<void> {
     // ~ 확장
     const resolved = inputPath.startsWith("~")
       ? path.join(os.homedir(), inputPath.slice(1))
@@ -125,7 +235,7 @@ export class SlackMessageHandler {
 
     await this.post(
       channel,
-      `📁 작업 디렉토리 변경됨\n\`${resolved}\`\n\n_대화 기록이 초기화되었습니다 (새 디렉토리로 새 세션 시작)._`
+      `📁 작업 디렉토리 변경됨\n\`${resolved}\`\n\n_대화 기록이 초기화되었습니다 (새 디렉토리로 새 세션 시작)._`,
     );
   }
 
@@ -135,7 +245,7 @@ export class SlackMessageHandler {
     if (skills.length === 0) {
       await this.post(
         channel,
-        "📦 *등록된 스킬 없음*\n\nCLAUDE.md의 안내를 참고해서 스킬을 추가하세요."
+        "📦 *등록된 스킬 없음*\n\nCLAUDE.md의 안내를 참고해서 스킬을 추가하세요.",
       );
       return;
     }
@@ -148,7 +258,10 @@ export class SlackMessageHandler {
       return `${icon} \`${s.name}\`${schedule}\n   ${s.metadata.description}`;
     });
 
-    await this.post(channel, `📦 *현재 스킬 (${skills.length}개)*\n\n${lines.join("\n\n")}`);
+    await this.post(
+      channel,
+      `📦 *현재 스킬 (${skills.length}개)*\n\n${lines.join("\n\n")}`,
+    );
   }
 
   private async handleSkillReload(channel: string): Promise<void> {
@@ -167,7 +280,10 @@ export class SlackMessageHandler {
     }
   }
 
-  private async fetchThreadContext(channel: string, threadTs: string): Promise<string | null> {
+  private async fetchThreadContext(
+    channel: string,
+    threadTs: string,
+  ): Promise<string | null> {
     try {
       const res = await this.deps.slackApp.client.conversations.replies({
         channel,
@@ -180,8 +296,12 @@ export class SlackMessageHandler {
 
       return messages
         .map((msg) => {
-          const time = new Date(parseFloat(msg.ts!) * 1000).toLocaleString("ko-KR");
-          const user = msg.user ? `<@${msg.user}>` : ((msg as any).username || "bot");
+          const time = new Date(parseFloat(msg.ts!) * 1000).toLocaleString(
+            "ko-KR",
+          );
+          const user = msg.user
+            ? `<@${msg.user}>`
+            : (msg as any).username || "bot";
           return `[${time}] ${user}: ${msg.text}`;
         })
         .join("\n");
@@ -191,11 +311,19 @@ export class SlackMessageHandler {
     }
   }
 
-  private async handleWithClaude(channel: string, message: string, threadTs?: string): Promise<void> {
+  private async handleWithClaude(
+    channel: string,
+    message: string,
+    threadTs?: string,
+  ): Promise<void> {
     const workingDir = this.getWorkingDir(channel);
     const session = new ClaudeSession(channel, undefined, workingDir);
 
-    const processingMsg = await this.post(channel, `🤔 처리 중...\n\n> ${message}`, threadTs);
+    const processingMsg = await this.post(
+      channel,
+      `🤔 처리 중...\n\n> ${message}`,
+      threadTs,
+    );
     const msgTs = processingMsg?.ts;
 
     try {
@@ -211,7 +339,12 @@ export class SlackMessageHandler {
       const { result } = await session.sendMessage(fullMessage);
 
       if (result.length > 3000) {
-        await this.update(channel, msgTs, `✅ 완료 (파일로 전송)\n\n> ${message}`, threadTs);
+        await this.update(
+          channel,
+          msgTs,
+          `✅ 완료 (파일로 전송)\n\n> ${message}`,
+          threadTs,
+        );
         await this.deps.slackApp.client.files.uploadV2({
           channels: channel,
           content: result,
@@ -234,7 +367,11 @@ export class SlackMessageHandler {
     return this.workingDirs.get(channel) ?? this.deps.defaultWorkingDir;
   }
 
-  private async post(channel: string, text: string, threadTs?: string): Promise<any> {
+  private async post(
+    channel: string,
+    text: string,
+    threadTs?: string,
+  ): Promise<any> {
     try {
       return await this.deps.slackApp.client.chat.postMessage({
         channel,
@@ -246,7 +383,12 @@ export class SlackMessageHandler {
     }
   }
 
-  private async update(channel: string, ts: string | undefined, text: string, threadTs?: string): Promise<void> {
+  private async update(
+    channel: string,
+    ts: string | undefined,
+    text: string,
+    threadTs?: string,
+  ): Promise<void> {
     if (!ts) {
       await this.post(channel, text, threadTs);
       return;

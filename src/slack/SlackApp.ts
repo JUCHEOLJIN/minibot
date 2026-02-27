@@ -35,22 +35,25 @@ export class SlackApp {
   private setupHandlers(): void {
     // @멘션 핸들러
     this.app.event("app_mention", async ({ event }) => {
-      if (event.user !== this.myUserId) return;
+      if (!event.user) return;
 
       const message = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
       if (!message) return;
+
+      const isOwner = event.user === this.myUserId;
 
       await this.emit(
         event.channel,
         event.user,
         message,
         false,
+        isOwner,
         event.ts,
         (event as any).thread_ts
       );
     });
 
-    // DM 핸들러
+    // DM 핸들러 (오너 전용)
     this.app.event("message", async ({ event }) => {
       if ((event as any).bot_id) return;
       if (event.channel_type !== "im") return;
@@ -59,7 +62,7 @@ export class SlackApp {
       const message = (event as any).text?.trim();
       if (!message) return;
 
-      await this.emit(event.channel, (event as any).user, message, true);
+      await this.emit(event.channel, (event as any).user, message, true, true);
     });
   }
 
@@ -68,6 +71,7 @@ export class SlackApp {
     userId: string,
     message: string,
     isDirectMessage: boolean,
+    isOwner: boolean,
     ts: string = "",
     threadTs?: string
   ): Promise<void> {
@@ -76,7 +80,7 @@ export class SlackApp {
       source: "slack",
       timestamp: new Date(),
       id: uuidv4(),
-      data: { channel, userId, message, isDirectMessage, ts, thread_ts: threadTs },
+      data: { channel, userId, message, isDirectMessage, isOwner, ts, thread_ts: threadTs },
     };
 
     await this.eventBus.emit(slackEvent);
