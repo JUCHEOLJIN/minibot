@@ -148,6 +148,10 @@ export class SkillLoader {
         data["disable-model-invocation"] ||
         data.disableModelInvocation ||
         false,
+      access: data.access === "public" ? "public" : "owner-only",
+      requiresThread: data["requires-thread"] ?? data.requiresThread ?? false,
+      requiresJiraUrl:
+        data["requires-jira-url"] ?? data.requiresJiraUrl ?? false,
     };
   }
 
@@ -181,6 +185,19 @@ export class SkillLoader {
         (t) =>
           t.toLowerCase().includes(lower) || lower.includes(t.toLowerCase())
       )
+    );
+  }
+
+  getPublicSkills(): Skill[] {
+    return this.getAllSkills().filter(
+      (skill) => skill.metadata.access === "public"
+    );
+  }
+
+  findPublicSkillByTrigger(message: string): Skill | undefined {
+    const lower = message.toLowerCase();
+    return this.getPublicSkills().find((skill) =>
+      skill.metadata.triggers?.some((t) => lower.includes(t.toLowerCase()))
     );
   }
 }

@@ -81,49 +81,14 @@ export class SlackMessageHandler {
       return;
     }
 
-    // ── 스레드 요약 직접 실행 ──────────────────────────────────
-    const summarizeTriggers = [
-      "요약하고 노션에 기록해줘",
-      "슬랙 요약",
-      "스레드 요약",
-      "노션에 정리해줘",
-      "노션에 저장해줘",
-    ];
-    if (thread_ts && summarizeTriggers.some((t) => message.includes(t))) {
-      await this.deps.skillScheduler.runSkill(
-        "slack-summarize",
-        [channel, thread_ts, userId],
-        { timeout: 120000 },
-      );
-      return;
-    }
-
-    // ── 스레드 요약 → JIRA description append ─────────────────
-    const jiraRecordTriggers = [
-      "요약하고 JIRA 카드에 기록해줘",
-      "jira에 기록해줘",
-      "jira 카드에 추가",
-      "JIRA에 정리해줘",
-      "jira description에 추가",
-    ];
-    const jiraUrlMatch = message.match(
-      /https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i,
+    // ── 공개 스킬 트리거 확인 ──────────────────────────────────
+    const handled = await this.runPublicSkillIfMatched(
+      channel,
+      message,
+      userId,
+      thread_ts,
     );
-    if (
-      thread_ts &&
-      jiraUrlMatch &&
-      jiraRecordTriggers.some((t) =>
-        message.toLowerCase().includes(t.toLowerCase()),
-      )
-    ) {
-      const jiraKey = jiraUrlMatch[1].toUpperCase();
-      await this.deps.skillScheduler.runSkill(
-        "slack-to-jira",
-        [channel, thread_ts, jiraKey, userId],
-        { timeout: 120000 },
-      );
-      return;
-    }
+    if (handled) return;
 
     // ── Claude에게 위임 ─────────────────────────────────────────
     await this.handleWithClaude(channel, message, thread_ts);
@@ -137,75 +102,68 @@ export class SlackMessageHandler {
     userId: string,
     thread_ts?: string,
   ): Promise<void> {
-    const summarizeTriggers = [
-      "요약하고 노션에 기록해줘",
-      "슬랙 요약",
-      "스레드 요약",
-      "노션에 정리해줘",
-      "노션에 저장해줘",
-    ];
-    const jiraRecordTriggers = [
-      "요약하고 jira 카드에 기록해줘",
-      "jira에 기록해줘",
-      "jira 카드에 추가",
-      "jira에 정리해줘",
-      "jira description에 추가",
-      "지라 카드에 추가",
-      "지라에 정리해줘",
-      "지라에 저장해줘",
-    ];
-    const jiraUrlMatch = message.match(
-      /https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i,
-    );
-
-    // 1. 스레드 요약 → Notion
-    if (thread_ts && summarizeTriggers.some((t) => message.includes(t))) {
-      await this.deps.skillScheduler.runSkill(
-        "slack-summarize",
-        [channel, thread_ts, userId],
-        { timeout: 120000 },
-      );
-      return;
-    }
-
-    // 2. 스레드 요약 → Jira
-    if (
-      thread_ts &&
-      jiraUrlMatch &&
-      jiraRecordTriggers.some((t) =>
-        message.toLowerCase().includes(t.toLowerCase()),
-      )
-    ) {
-      const jiraKey = jiraUrlMatch[1].toUpperCase();
-      await this.deps.skillScheduler.runSkill(
-        "slack-to-jira",
-        [channel, thread_ts, jiraKey, userId],
-        { timeout: 120000 },
-      );
-      return;
-    }
-
-    // 3. thread_ts 없이 요약 트리거만 보낸 경우 안내
-    if (
-      !thread_ts &&
-      (summarizeTriggers.some((t) => message.includes(t)) ||
-        jiraRecordTriggers.some((t) =>
-          message.toLowerCase().includes(t.toLowerCase()),
-        ))
-    ) {
-      await this.post(
-        channel,
-        `<@${userId}> 스레드 안에서 멘션해주세요. 요약할 스레드가 필요합니다.`,
-      );
-      return;
-    }
-
-    // 4. 허용되지 않은 요청 거절
-    await this.post(
+    const handled = await this.runPublicSkillIfMatched(
       channel,
-      `<@${userId}> 저는 이 채널에서 다음 기능만 지원합니다:\n• *스레드 요약 후 노션 저장* — 스레드에서 \`스레드 요약\` 멘션\n• *스레드 요약 후 Jira 기록* — 스레드에서 \`jira에 기록해줘 <Jira URL>\` 멘션`,
+      message,
+      userId,
       thread_ts,
     );
+    if (handled) return;
+
+    const publicSkills = this.deps.skillLoader.getPublicSkills();
+    const descriptions = publicSkills
+      .map(
+        (s) =>
+          `• *${s.metadata.description.split(".")[0]}* — \`${s.metadata.triggers?.[0] ?? s.name}\``,
+      )
+      .join("\n");
+
+    await this.post(
+      channel,
+      `<@${userId}> 저는 이 채널에서 다음 기능만 지원합니다:\n${descriptions}`,
+      thread_ts,
+    );
+  }
+
+  // ── public 스킬 트리거 매칭 + 실행 ──────────────────────────
+
+  private async runPublicSkillIfMatched(
+    channel: string,
+    message: string,
+    userId: string,
+    thread_ts?: string,
+  ): Promise<boolean> {
+    const skill = this.deps.skillLoader.findPublicSkillByTrigger(message);
+    if (!skill) return false;
+
+    if (skill.metadata.requiresThread && !thread_ts) {
+      await this.post(
+        channel,
+        `<@${userId}> 스레드 안에서 멘션해주세요. 이 기능은 스레드 컨텍스트가 필요합니다.`,
+      );
+      return true;
+    }
+
+    if (skill.metadata.requiresJiraUrl) {
+      const jiraUrlMatch = message.match(
+        /https?:\/\/[^\s>]+\/browse\/([A-Z]+-\d+)/i,
+      );
+      if (!jiraUrlMatch) {
+        await this.post(
+          channel,
+          `<@${userId}> JIRA URL을 함께 입력해주세요.\n예: \`jira에 기록해줘 https://....atlassian.net/browse/ENG-123\``,
+          thread_ts,
+        );
+        return true;
+      }
+    }
+
+    await this.deps.skillScheduler.runSkill(
+      skill.name,
+      [channel, thread_ts || "", userId, message],
+      { timeout: 120000 },
+    );
+    return true;
   }
 
   // ── 명령어 핸들러 ────────────────────────────────────────────

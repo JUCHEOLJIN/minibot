@@ -14,6 +14,9 @@ export interface SkillMetadata {
   triggers?: string[];
   dependencies?: string[];
   disableModelInvocation?: boolean;
+  access?: "public" | "owner-only";
+  requiresThread?: boolean;
+  requiresJiraUrl?: boolean;
 }
 
 export interface Skill {
