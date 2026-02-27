@@ -1,6 +1,21 @@
 import { execSync } from "child_process";
+import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { Skill, SkillExecutionResult } from "./types";
+
+const LOG_DIR = path.join(os.homedir(), ".mini-bot", "logs");
+
+function writeLog(entry: Record<string, unknown>): void {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const logPath = path.join(LOG_DIR, `${date}.jsonl`);
+    fs.appendFileSync(logPath, JSON.stringify(entry) + "\n");
+  } catch {
+    // 로그 실패는 무시
+  }
+}
 
 export class SkillExecutor {
   private readonly defaultTimeout: number = 30000;
@@ -42,12 +57,16 @@ export class SkillExecutor {
       console.log(`   ✅ 실행 완료 (${duration}ms)`);
 
       try {
-        return JSON.parse(output.trim()) as SkillExecutionResult;
+        const result = JSON.parse(output.trim()) as SkillExecutionResult;
+        writeLog({ ts: new Date().toISOString(), skill: skill.name, source: skill.source, success: true, duration });
+        return result;
       } catch {
+        writeLog({ ts: new Date().toISOString(), skill: skill.name, source: skill.source, success: true, duration });
         return { success: true, data: output.trim() };
       }
     } catch (error: any) {
       console.error(`   ❌ 실행 실패: ${error.message}`);
+      writeLog({ ts: new Date().toISOString(), skill: skill.name, source: skill.source, success: false, error: error.message });
       return {
         success: false,
         error: error.message,

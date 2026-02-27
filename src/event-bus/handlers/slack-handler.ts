@@ -1,6 +1,19 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+
+const LOG_DIR = path.join(os.homedir(), ".mini-bot", "logs");
+function writeClaudeLog(message: string, success: boolean, duration: number): void {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    fs.appendFileSync(
+      path.join(LOG_DIR, `${date}.jsonl`),
+      JSON.stringify({ ts: new Date().toISOString(), skill: "__claude__", message: message.slice(0, 100), success, duration }) + "\n"
+    );
+  } catch { /* 무시 */ }
+}
+
 import { App } from "@slack/bolt";
 import { Event, SlackMessageEvent } from "../events";
 import { ClaudeSession, clearConversation } from "../../claude/ClaudeSession";
@@ -283,6 +296,7 @@ export class SlackMessageHandler {
       threadTs,
     );
     const msgTs = processingMsg?.ts;
+    const startTime = Date.now();
 
     try {
       let fullMessage = message;
@@ -312,8 +326,10 @@ export class SlackMessageHandler {
       } else {
         await this.update(channel, msgTs, result, threadTs);
       }
+      writeClaudeLog(message, true, Date.now() - startTime);
     } catch (error: any) {
       console.error("Claude 실행 오류:", error);
+      writeClaudeLog(message, false, Date.now() - startTime);
       await this.update(channel, msgTs, `❌ 오류: ${error.message}`, threadTs);
     }
   }
